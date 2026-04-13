@@ -33,12 +33,16 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ollama.android.data.ChatMessage
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,145 +50,173 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     var showModelSelector by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         viewModel.refreshLocalModels()
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("Ollama 4 Android", style = MaterialTheme.typography.titleMedium)
-                        if (uiState.loadedModelName != null) {
-                            Text(
-                                uiState.loadedModelName!!,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        } else {
-                            Text(
-                                "No model loaded",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ChatHistoryDrawer(
+                sessions = uiState.sessions,
+                currentSessionId = uiState.currentSessionId,
+                onSessionClick = { session ->
+                    viewModel.loadSession(session)
+                    scope.launch { drawerState.close() }
                 },
-                actions = {
-                    // Stats display: tokens/s and memory
-                    if (uiState.isModelLoaded) {
-                        Column(
-                            modifier = Modifier.padding(end = 4.dp),
-                            horizontalAlignment = Alignment.End
-                        ) {
-                            if (uiState.isGenerating) {
-                                Text(
-                                    "%.1f t/s".format(uiState.tokensPerSecond),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            if (uiState.memoryUsageMb > 0) {
-                                Text(
-                                    "${uiState.memoryUsageMb} MB",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-
-                    IconButton(onClick = { showModelSelector = true }) {
-                        Icon(Icons.Default.Memory, "Select model")
-                    }
-                    if (uiState.messages.isNotEmpty()) {
-                        IconButton(onClick = { showClearConfirm = true }) {
-                            Icon(Icons.Default.DeleteSweep, "Clear chat")
-                        }
-                    }
+                onDeleteSession = { session ->
+                    viewModel.deleteSession(session)
+                },
+                onNewChat = {
+                    viewModel.startNewChat()
+                    scope.launch { drawerState.close() }
                 }
             )
         }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .imePadding()
-        ) {
-            // Error banner
-            AnimatedVisibility(visible = uiState.error != null) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            uiState.error ?: "",
-                            modifier = Modifier.weight(1f),
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        IconButton(onClick = { viewModel.dismissError() }) {
-                            Icon(Icons.Default.Close, "Dismiss")
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Default.Menu, "Chat history")
                         }
-                    }
-                }
-            }
+                    },
+                    title = {
+                        Column {
+                            Text("Ollama 4 Android", style = MaterialTheme.typography.titleMedium)
+                            if (uiState.loadedModelName != null) {
+                                Text(
+                                    uiState.loadedModelName!!,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                Text(
+                                    "No model loaded",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    },
+                    actions = {
+                        if (uiState.isModelLoaded) {
+                            Column(
+                                modifier = Modifier.padding(end = 4.dp),
+                                horizontalAlignment = Alignment.End
+                            ) {
+                                if (uiState.isGenerating) {
+                                    Text(
+                                        "%.1f t/s".format(uiState.tokensPerSecond),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                if (uiState.memoryUsageMb > 0) {
+                                    Text(
+                                        "${uiState.memoryUsageMb} MB",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
 
-            // Welcome message when no model loaded
-            if (!uiState.isModelLoaded && uiState.messages.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.Psychology,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            "Welcome to Ollama 4 Android",
-                            style = MaterialTheme.typography.headlineSmall
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "Download a model in the Models tab,\nthen tap the chip icon to load it.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = { showModelSelector = true }) {
-                            Text("Load a Model")
+                        IconButton(onClick = { viewModel.startNewChat() }) {
+                            Icon(Icons.Default.Add, "New chat")
+                        }
+                        IconButton(onClick = { showModelSelector = true }) {
+                            Icon(Icons.Default.Memory, "Select model")
+                        }
+                        if (uiState.messages.isNotEmpty()) {
+                            IconButton(onClick = { showClearConfirm = true }) {
+                                Icon(Icons.Default.DeleteSweep, "Clear chat")
+                            }
                         }
                     }
-                }
-            } else {
-                // Chat messages
-                MessageList(
-                    messages = uiState.messages,
-                    isGenerating = uiState.isGenerating,
-                    modifier = Modifier.weight(1f)
                 )
             }
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .imePadding()
+            ) {
+                // Error banner
+                AnimatedVisibility(visible = uiState.error != null) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                uiState.error ?: "",
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            IconButton(onClick = { viewModel.dismissError() }) {
+                                Icon(Icons.Default.Close, "Dismiss")
+                            }
+                        }
+                    }
+                }
 
-            // Input bar
-            ChatInputBar(
-                enabled = uiState.isModelLoaded && !uiState.isGenerating,
-                isGenerating = uiState.isGenerating,
-                onSend = { viewModel.sendMessage(it) },
-                onStop = { viewModel.stopGeneration() }
-            )
+                // Welcome message when no model loaded
+                if (!uiState.isModelLoaded && uiState.messages.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Default.Psychology,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                "Welcome to Ollama 4 Android",
+                                style = MaterialTheme.typography.headlineSmall
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "Download a model in the Models tab,\nthen tap the chip icon to load it.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(onClick = { showModelSelector = true }) {
+                                Text("Load a Model")
+                            }
+                        }
+                    }
+                } else {
+                    MessageList(
+                        messages = uiState.messages,
+                        isGenerating = uiState.isGenerating,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                ChatInputBar(
+                    enabled = uiState.isModelLoaded && !uiState.isGenerating,
+                    isGenerating = uiState.isGenerating,
+                    onSend = { viewModel.sendMessage(it) },
+                    onStop = { viewModel.stopGeneration() }
+                )
+            }
         }
     }
 
@@ -228,6 +260,145 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ChatHistoryDrawer(
+    sessions: List<ChatSession>,
+    currentSessionId: String?,
+    onSessionClick: (ChatSession) -> Unit,
+    onDeleteSession: (ChatSession) -> Unit,
+    onNewChat: () -> Unit
+) {
+    ModalDrawerSheet(modifier = Modifier.width(300.dp)) {
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            "Chat History",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+        )
+
+        FilledTonalButton(
+            onClick = onNewChat,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("New Chat")
+        }
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+        if (sessions.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "No conversations yet",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 8.dp)
+            ) {
+                items(sessions, key = { it.id }) { session ->
+                    val isCurrent = session.id == currentSessionId
+                    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+                    NavigationDrawerItem(
+                        label = {
+                            Column {
+                                Text(
+                                    session.title,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    buildString {
+                                        append(formatDate(session.updatedAt))
+                                        if (session.modelName != null) {
+                                            append(" \u00B7 ${session.modelName}")
+                                        }
+                                        append(" \u00B7 ${session.messageCount} msgs")
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        },
+                        selected = isCurrent,
+                        onClick = { onSessionClick(session) },
+                        icon = {
+                            Icon(
+                                Icons.Default.ChatBubbleOutline,
+                                null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        badge = {
+                            IconButton(
+                                onClick = { showDeleteConfirm = true },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    "Delete",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        },
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+
+                    if (showDeleteConfirm) {
+                        AlertDialog(
+                            onDismissRequest = { showDeleteConfirm = false },
+                            title = { Text("Delete Chat") },
+                            text = { Text("Delete \"${session.title}\"? This cannot be undone.") },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    onDeleteSession(session)
+                                    showDeleteConfirm = false
+                                }) {
+                                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showDeleteConfirm = false }) {
+                                    Text("Cancel")
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatDate(timestamp: Long): String {
+    val now = System.currentTimeMillis()
+    val diff = now - timestamp
+    return when {
+        diff < 60_000 -> "Just now"
+        diff < 3_600_000 -> "${diff / 60_000}m ago"
+        diff < 86_400_000 -> "${diff / 3_600_000}h ago"
+        diff < 604_800_000 -> SimpleDateFormat("EEE", Locale.getDefault()).format(Date(timestamp))
+        else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(timestamp))
+    }
+}
+
 @Composable
 fun MessageList(
     messages: List<ChatMessage>,
@@ -237,8 +408,6 @@ fun MessageList(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    // Auto-scroll only when the last item is already visible (user is at/near bottom)
-    // and user is not actively scrolling. This lets users scroll up freely during generation.
     LaunchedEffect(messages.size, messages.lastOrNull()?.content) {
         if (messages.isNotEmpty()) {
             val info = listState.layoutInfo
@@ -253,7 +422,6 @@ fun MessageList(
         }
     }
 
-    // When a new message is added (user sends or assistant starts), always scroll to bottom
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             scope.launch {
@@ -271,7 +439,6 @@ fun MessageList(
         items(messages, key = { it.id }) { message ->
             MessageBubble(message)
         }
-        // Scroll anchor — lets us scroll past the last message's bottom edge
         item(key = "scroll_anchor") {
             Spacer(modifier = Modifier.height(4.dp))
         }
@@ -434,7 +601,7 @@ private fun parseMarkdownBlocks(text: String): List<MarkdownBlock> {
                 i++
             }
             blocks.add(MarkdownBlock.CodeBlock(codeLines.joinToString("\n"), lang))
-            i++ // skip closing ```
+            i++
         } else {
             paragraphLines.add(line)
             i++
@@ -451,7 +618,6 @@ private fun parseInlineMarkdown(text: String) = buildAnnotatedString {
 
     while (i < len) {
         when {
-            // Bold: **text**
             i + 1 < len && text[i] == '*' && text[i + 1] == '*' -> {
                 val end = text.indexOf("**", i + 2)
                 if (end != -1) {
@@ -464,7 +630,6 @@ private fun parseInlineMarkdown(text: String) = buildAnnotatedString {
                     i++
                 }
             }
-            // Italic: *text*
             text[i] == '*' && (i == 0 || text[i - 1] != '*') -> {
                 val end = text.indexOf('*', i + 1)
                 if (end != -1 && (end + 1 >= len || text[end + 1] != '*')) {
@@ -477,7 +642,6 @@ private fun parseInlineMarkdown(text: String) = buildAnnotatedString {
                     i++
                 }
             }
-            // Inline code: `text`
             text[i] == '`' -> {
                 val end = text.indexOf('`', i + 1)
                 if (end != -1) {
@@ -493,7 +657,6 @@ private fun parseInlineMarkdown(text: String) = buildAnnotatedString {
                     i++
                 }
             }
-            // Heading markers: # at start of line
             (i == 0 || text[i - 1] == '\n') && text[i] == '#' -> {
                 var hEnd = i
                 while (hEnd < len && text[hEnd] == '#') hEnd++
@@ -508,7 +671,6 @@ private fun parseInlineMarkdown(text: String) = buildAnnotatedString {
                     i++
                 }
             }
-            // Bullet list: - at start of line
             (i == 0 || text[i - 1] == '\n') && (text[i] == '-' || text[i] == '\u2022') &&
                     i + 1 < len && text[i + 1] == ' ' -> {
                 append("  \u2022 ")

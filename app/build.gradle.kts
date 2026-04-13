@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.google.devtools.ksp")
 }
 
 val keystoreProperties = Properties().apply {
@@ -109,6 +110,11 @@ dependencies {
 
     // OkHttp for model downloads
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Room database for chat persistence
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    ksp("androidx.room:room-compiler:2.6.1")
 
     // DataStore for preferences
     implementation("androidx.datastore:datastore-preferences:1.0.0")
