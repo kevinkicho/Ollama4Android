@@ -49,14 +49,11 @@ This project was built entirely by **Claude** (Anthropic's AI assistant), specif
 ## Build Instructions
 
 ```bash
-# 1. Clone this repository
-git clone https://github.com/kevinkicho/Ollama4Android.git
+# 1. Clone this repository (with llama.cpp submodule)
+git clone --recursive https://github.com/kevinkicho/Ollama4Android.git
 cd Ollama4Android
 
-# 2. Clone llama.cpp into the native source directory
-git clone https://github.com/ggerganov/llama.cpp app/src/main/cpp/llama.cpp
-
-# 3. Create keystore.properties for release signing (optional)
+# 2. Create keystore.properties for release signing (optional)
 cat > keystore.properties << 'EOF'
 storeFile=../release-keystore.jks
 storePassword=your_password
@@ -64,15 +61,15 @@ keyAlias=ollama-android
 keyPassword=your_password
 EOF
 
-# 4. Build debug APK
+# 3. Build debug APK
 ./gradlew assembleDebug
 # Output: app/build/outputs/apk/debug/app-debug.apk
 
-# 5. Build release APK (requires keystore.properties + .jks file)
+# 4. Build release APK (requires keystore.properties + .jks file)
 ./gradlew assembleRelease
 # Output: app/build/outputs/apk/release/app-release.apk
 
-# 6. Install on connected device
+# 5. Install on connected device
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 

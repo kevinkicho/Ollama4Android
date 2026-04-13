@@ -9,7 +9,7 @@
 .cxx
 local.properties
 /app/build
-/app/src/main/cpp/llama.cpp
+# llama.cpp is now a git submodule — do not ignore
 *.apk
 *.aab
 *.hprof
