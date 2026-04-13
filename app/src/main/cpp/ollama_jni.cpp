@@ -156,22 +156,46 @@ Java_com_ollama_android_llama_LlamaAndroid_nativeComplete(
     std::vector<llama_token> tokens(n_prompt_tokens);
     llama_tokenize(vocab, prompt_str.c_str(), prompt_str.size(), tokens.data(), tokens.size(), true, true);
 
-    LOGI("Prompt tokens: %d, max predict: %d", n_prompt_tokens, n_predict);
+    // Get context size and check if prompt fits
+    int n_ctx = llama_n_ctx(ctx);
+    LOGI("Prompt tokens: %d, context size: %d, max predict: %d", n_prompt_tokens, n_ctx, n_predict);
+
+    // If prompt exceeds context, truncate from the beginning (keep most recent tokens)
+    if (n_prompt_tokens >= n_ctx) {
+        int keep_tokens = n_ctx - 64; // Leave room for generation
+        LOGI("Prompt too long (%d tokens), truncating to last %d tokens", n_prompt_tokens, keep_tokens);
+        int skip = n_prompt_tokens - keep_tokens;
+        tokens.erase(tokens.begin(), tokens.begin() + skip);
+        n_prompt_tokens = tokens.size();
+        LOGI("After truncation: %d tokens", n_prompt_tokens);
+    }
 
     // Clear memory (KV cache)
     llama_memory_clear(llama_get_memory(ctx), true);
 
-    // Process prompt in batch
-    llama_batch batch = llama_batch_init(tokens.size(), 0, 1);
-    for (size_t i = 0; i < tokens.size(); i++) {
-        common_batch_add(batch, tokens[i], i, {0}, false);
-    }
-    batch.logits[batch.n_tokens - 1] = true;
+    // Process prompt in chunks of n_batch to avoid exceeding batch size limit
+    int n_batch_size = 512;
+    llama_batch batch = llama_batch_init(n_batch_size, 0, 1);
+    int n_past = 0;
 
-    if (llama_decode(ctx, batch) != 0) {
-        llama_batch_free(batch);
-        throw_java_exception(env, "Failed to decode prompt");
-        return;
+    for (int i = 0; i < n_prompt_tokens; i += n_batch_size) {
+        int n_eval = std::min(n_batch_size, n_prompt_tokens - i);
+        bool is_last_chunk = (i + n_eval >= n_prompt_tokens);
+
+        common_batch_clear(batch);
+        for (int j = 0; j < n_eval; j++) {
+            bool need_logits = is_last_chunk && (j == n_eval - 1);
+            common_batch_add(batch, tokens[i + j], n_past + j, {0}, need_logits);
+        }
+
+        if (llama_decode(ctx, batch) != 0) {
+            llama_batch_free(batch);
+            LOGE("Failed to decode prompt chunk at position %d", i);
+            throw_java_exception(env, "Failed to decode prompt");
+            return;
+        }
+        n_past += n_eval;
+        LOGI("Decoded prompt chunk: %d/%d tokens", n_past, n_prompt_tokens);
     }
 
     // Setup sampler chain
@@ -182,7 +206,7 @@ Java_com_ollama_android_llama_LlamaAndroid_nativeComplete(
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(0));
 
     // Generate tokens
-    int n_cur = batch.n_tokens;
+    int n_cur = n_past;
     int n_generated = 0;
 
     while (n_generated < n_predict && !g_abort.load()) {

@@ -39,7 +39,9 @@ data class ChatUiState(
     val memoryUsageMb: Int = 0,
     val memoryLimitMb: Int = 0,
     val currentSessionId: String? = null,
-    val sessions: List<ChatSession> = emptyList()
+    val sessions: List<ChatSession> = emptyList(),
+    val contextUsedPercent: Int = 0,
+    val contextTrimmed: Boolean = false
 )
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -53,7 +55,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     private var generationJob: Job? = null
-    private val contextSize = 2048
+    private val contextSize = 4096
 
     init {
         refreshLocalModels()
@@ -337,27 +339,37 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun buildPrompt(): String {
         val modelName = _uiState.value.loadedModelName?.lowercase() ?: ""
-        val messages = trimMessagesToFit(_uiState.value.messages)
+        val allMessages = _uiState.value.messages
+        val messages = trimMessagesToFit(allMessages)
+        val wasTrimmed = messages.size < allMessages.size
 
-        return when {
+        val prompt = when {
             modelName.contains("gemma") -> buildGemmaPrompt(messages)
             modelName.contains("qwen") -> buildChatMLPrompt(messages)
             modelName.contains("smollm") -> buildChatMLPrompt(messages)
             else -> buildChatMLPrompt(messages)
         }
+
+        // Estimate context usage (prompt chars / 3 ≈ tokens)
+        val estimatedTokens = prompt.length / 3
+        val usedPercent = ((estimatedTokens.toFloat() / contextSize) * 100).toInt().coerceIn(0, 100)
+
+        _uiState.update { it.copy(contextUsedPercent = usedPercent, contextTrimmed = wasTrimmed) }
+
+        return prompt
     }
 
     private fun trimMessagesToFit(messages: List<ChatMessage>): List<ChatMessage> {
-        val maxPromptTokens = contextSize - 400
-        val maxPromptChars = maxPromptTokens * 4
+        // Conservative: ~3 chars per token, reserve 1024 tokens for generation
+        val maxPromptChars = (contextSize - 1024) * 3
 
-        var totalChars = messages.sumOf { it.content.length + 30 }
+        var totalChars = messages.sumOf { it.content.length + 50 }
         if (totalChars <= maxPromptChars) return messages
 
         val trimmed = messages.toMutableList()
         while (trimmed.size > 2 && totalChars > maxPromptChars) {
             val removed = trimmed.removeAt(0)
-            totalChars -= (removed.content.length + 30)
+            totalChars -= (removed.content.length + 50)
         }
         return trimmed
     }

@@ -123,6 +123,18 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
+                                if (uiState.contextUsedPercent > 0) {
+                                    val ctxColor = when {
+                                        uiState.contextUsedPercent > 80 -> MaterialTheme.colorScheme.error
+                                        uiState.contextUsedPercent > 50 -> MaterialTheme.colorScheme.tertiary
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                    Text(
+                                        "ctx ${uiState.contextUsedPercent}%",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = ctxColor
+                                    )
+                                }
                             }
                         }
 
@@ -203,6 +215,21 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                         }
                     }
                 } else {
+                    // Context trimming notice
+                    AnimatedVisibility(visible = uiState.contextTrimmed) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                "Older messages trimmed from context to fit memory. They're still saved in chat history.",
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        }
+                    }
+
                     MessageList(
                         messages = uiState.messages,
                         isGenerating = uiState.isGenerating,
