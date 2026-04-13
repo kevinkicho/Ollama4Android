@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ollama 4 Android</string>
+    <string name="app_description">Run AI models locally on your device</string>
+    <string name="notification_channel_inference">Inference</string>
+    <string name="notification_channel_download">Model Downloads</string>
+</resources>

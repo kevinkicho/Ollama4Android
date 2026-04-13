@@ -1,0 +1,6 @@
+Initial release:
+- Chat with Gemma 3, Qwen 2.5, and SmolLM2 models locally
+- KleidiAI-accelerated inference on ARM64
+- Model download manager with Hugging Face integration
+- Battery optimization setup wizard with Samsung deep-links
+- Streaming token generation at 10+ tokens/second
