@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.ollama.android.api.OllamaApiServer
 import com.ollama.android.llama.LlamaAndroid
 import com.ollama.android.service.ApiServerService
+import com.ollama.android.service.InferenceService
 import com.ollama.android.util.DeviceOptimization
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -330,6 +331,67 @@ fun SettingsScreen(onOpenSetup: () -> Unit = {}) {
                         Text("Run Device Setup Again")
                     }
                 }
+            }
+
+            // Shutdown
+            var showShutdownConfirm by remember { mutableStateOf(false) }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "Background Services",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "The model and API server keep running even if you swipe the app away. Use this to fully shut down all background services.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { showShutdownConfirm = true },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.PowerSettingsNew, null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Shut Down All Services")
+                    }
+                }
+            }
+
+            if (showShutdownConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showShutdownConfirm = false },
+                    icon = { Icon(Icons.Default.PowerSettingsNew, null) },
+                    title = { Text("Shut Down Services?") },
+                    text = { Text("This will unload the model, stop the API server, and release all background resources. You'll need to reload the model to chat again.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            context.stopService(Intent(context, InferenceService::class.java))
+                            context.stopService(Intent(context, ApiServerService::class.java))
+                            showShutdownConfirm = false
+                        }) {
+                            Text("Shut Down", color = MaterialTheme.colorScheme.error)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showShutdownConfirm = false }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
             }
 
             // About

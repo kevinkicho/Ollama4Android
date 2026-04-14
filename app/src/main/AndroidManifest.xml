@@ -34,11 +34,13 @@
         <service
             android:name=".service.InferenceService"
             android:foregroundServiceType="specialUse"
+            android:stopWithTask="false"
             android:exported="false" />
 
         <service
             android:name=".service.ApiServerService"
             android:foregroundServiceType="specialUse"
+            android:stopWithTask="false"
             android:exported="false" />
 
     </application>

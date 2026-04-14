@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.ollama.android.MainActivity
@@ -21,6 +22,7 @@ import com.ollama.android.api.OllamaApiServer
 class ApiServerService : Service() {
 
     private var server: OllamaApiServer? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -34,6 +36,7 @@ class ApiServerService : Service() {
                 val assignedPort = server!!.listeningPort
                 activePort = assignedPort
                 isRunning = true
+                acquireWakeLock()
                 startForeground(NOTIFICATION_ID, createNotification(assignedPort))
                 Log.i(TAG, "API server started on port $assignedPort (requested: $requestedPort)")
             } catch (e: Exception) {
@@ -48,13 +51,38 @@ class ApiServerService : Service() {
         return START_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // Service survives app swipe-away — do nothing, keep running
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         server?.shutdown()
         server = null
+        releaseWakeLock()
         isRunning = false
         activePort = 0
         Log.i(TAG, "API server stopped")
         super.onDestroy()
+    }
+
+    private fun acquireWakeLock() {
+        if (wakeLock == null) {
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "Ollama4Android::ApiServerWakeLock"
+            ).apply {
+                acquire()
+            }
+        }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) it.release()
+        }
+        wakeLock = null
     }
 
     private fun createNotification(port: Int): Notification {
