@@ -32,7 +32,7 @@ class OllamaApiServer(
     }
 
     companion object {
-        const val DEFAULT_PORT = 11434
+        const val DEFAULT_PORT = 0
         private const val TAG = "OllamaApiServer"
     }
 

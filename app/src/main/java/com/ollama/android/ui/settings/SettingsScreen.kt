@@ -247,9 +247,9 @@ fun SettingsScreen(onOpenSetup: () -> Unit = {}) {
                             supportingText = {
                                 Text(
                                     when {
-                                        apiPort == "0" -> "OS will assign an available port"
+                                        apiPort == "0" || apiPort.isEmpty() -> "Default: OS will assign an available port"
                                         (apiPort.toIntOrNull() ?: 0) in 1..1023 -> "Ports 1-1023 may be restricted"
-                                        else -> "Default: ${OllamaApiServer.DEFAULT_PORT}"
+                                        else -> "Set to 0 for auto-assign"
                                     },
                                     style = MaterialTheme.typography.labelSmall
                                 )
