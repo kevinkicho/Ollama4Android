@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -531,6 +532,8 @@ fun MessageBubble(message: ChatMessage) {
     val alignment = if (isUser) Alignment.End else Alignment.Start
     val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val maxBubbleWidth = (screenWidthDp * 0.8f).dp
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -546,7 +549,7 @@ fun MessageBubble(message: ChatMessage) {
         Box {
             Box(
                 modifier = Modifier
-                    .widthIn(max = 320.dp)
+                    .widthIn(max = maxBubbleWidth)
                     .clip(
                         RoundedCornerShape(
                             topStart = 16.dp,
