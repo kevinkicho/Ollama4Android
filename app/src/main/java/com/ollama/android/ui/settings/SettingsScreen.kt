@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -14,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ollama.android.api.OllamaApiServer
 import com.ollama.android.llama.LlamaAndroid
@@ -95,13 +97,55 @@ fun SettingsScreen(onOpenSetup: () -> Unit = {}) {
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "Expose an Ollama-compatible API on localhost:${OllamaApiServer.DEFAULT_PORT} so other apps can use the loaded model.",
+                        "Expose an Ollama-compatible API on localhost so other apps can use the loaded model.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(12.dp))
 
+                    val prefs = remember { context.getSharedPreferences("api_server", Context.MODE_PRIVATE) }
+                    var apiPort by remember { mutableStateOf(prefs.getInt("port", OllamaApiServer.DEFAULT_PORT).let { if (it == 0) "0" else it.toString() }) }
                     var apiRunning by remember { mutableStateOf(ApiServerService.isRunning) }
+                    val activePort = ApiServerService.activePort
+
+                    // Port configuration
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Port", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp))
+                        OutlinedTextField(
+                            value = apiPort,
+                            onValueChange = { value ->
+                                val filtered = value.filter { it.isDigit() }
+                                if (filtered.length <= 5) {
+                                    apiPort = filtered
+                                    val portNum = filtered.toIntOrNull() ?: 0
+                                    if (portNum in 0..65535) {
+                                        prefs.edit().putInt("port", portNum).apply()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f).padding(start = 12.dp),
+                            enabled = !apiRunning,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium,
+                            supportingText = {
+                                Text(
+                                    when {
+                                        apiPort == "0" -> "OS will assign an available port"
+                                        (apiPort.toIntOrNull() ?: 0) in 1..1023 -> "Ports 1-1023 may be restricted"
+                                        else -> "Default: ${OllamaApiServer.DEFAULT_PORT}"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -111,7 +155,7 @@ fun SettingsScreen(onOpenSetup: () -> Unit = {}) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("API Server", style = MaterialTheme.typography.bodyMedium)
                             Text(
-                                if (apiRunning) "Running on localhost:${OllamaApiServer.DEFAULT_PORT}"
+                                if (apiRunning) "Running on localhost:$activePort"
                                 else "Stopped",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (apiRunning)
@@ -124,7 +168,10 @@ fun SettingsScreen(onOpenSetup: () -> Unit = {}) {
                             checked = apiRunning,
                             onCheckedChange = { enabled ->
                                 if (enabled) {
-                                    val intent = Intent(context, ApiServerService::class.java)
+                                    val portNum = apiPort.toIntOrNull() ?: OllamaApiServer.DEFAULT_PORT
+                                    val intent = Intent(context, ApiServerService::class.java).apply {
+                                        putExtra(ApiServerService.EXTRA_PORT, portNum)
+                                    }
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                         context.startForegroundService(intent)
                                     } else {
@@ -160,7 +207,7 @@ fun SettingsScreen(onOpenSetup: () -> Unit = {}) {
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    "Base URL: http://localhost:${OllamaApiServer.DEFAULT_PORT}",
+                                    "Base URL: http://localhost:$activePort",
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.SemiBold
                                 )
