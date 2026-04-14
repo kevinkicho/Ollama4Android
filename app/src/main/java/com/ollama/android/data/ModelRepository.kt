@@ -36,6 +36,14 @@ class ModelRepository(private val context: Context) {
         }.asStateFlow()
     }
 
+    private val prefs = context.getSharedPreferences("ollama_prefs", Context.MODE_PRIVATE)
+
+    fun getApiKey(): String = prefs.getString("cloud_api_key", "") ?: ""
+
+    fun setApiKey(key: String) {
+        prefs.edit().putString("cloud_api_key", key).apply()
+    }
+
     /**
      * Get list of locally available models.
      */
@@ -52,6 +60,31 @@ class ModelRepository(private val context: Context) {
                 )
             } else null
         }
+    }
+
+    /**
+     * Get cloud models (always available when API key is set).
+     */
+    fun getCloudModels(): List<LocalModel> {
+        if (getApiKey().isBlank()) return emptyList()
+        return ModelCatalog.cloudModels.map { cloud ->
+            LocalModel(
+                id = cloud.id,
+                name = cloud.name,
+                filePath = "",
+                sizeBytes = 0L,
+                quantization = "Cloud",
+                isCloud = true,
+                cloudModelTag = cloud.cloudModelTag
+            )
+        }
+    }
+
+    /**
+     * Get all available models (local + cloud).
+     */
+    suspend fun getAllAvailableModels(): List<LocalModel> = withContext(Dispatchers.IO) {
+        getLocalModels() + getCloudModels()
     }
 
     /**

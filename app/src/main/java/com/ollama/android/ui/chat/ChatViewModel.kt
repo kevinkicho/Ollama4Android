@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.Debug
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.ollama.android.api.OllamaCloudClient
 import com.ollama.android.data.ChatMessage
 import com.ollama.android.data.LocalModel
 import com.ollama.android.data.ModelRepository
@@ -48,6 +49,7 @@ data class ChatUiState(
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val llama = LlamaAndroid.instance
+    private val cloudClient = OllamaCloudClient.getInstance()
     private val modelRepo = ModelRepository.getInstance(application)
     private val activityManager = application.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     private val chatDao = ChatDatabase.getInstance(application).chatDao()
@@ -58,6 +60,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         @Volatile
         var currentLoadedModelName: String? = null
+        @Volatile
+        var currentModelIsCloud: Boolean = false
+        @Volatile
+        var currentCloudModelTag: String? = null
     }
 
     private var generationJob: Job? = null
@@ -101,7 +107,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshLocalModels() {
         viewModelScope.launch {
-            val models = modelRepo.getLocalModels()
+            val models = modelRepo.getAllAvailableModels()
             _uiState.update { it.copy(availableModels = models) }
         }
     }
@@ -110,17 +116,38 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(error = null, isModelLoading = true) }
-                llama.loadModel(model.filePath, nGpuLayers = 0)
-                llama.createContext(nCtx = contextSize, nThreads = 4)
-                currentLoadedModelName = model.name
-                _uiState.update {
-                    it.copy(
-                        isModelLoaded = true,
-                        isModelLoading = false,
-                        loadedModelName = model.name
-                    )
+
+                if (model.isCloud) {
+                    // Cloud models don't need JNI loading — just unload any local model
+                    if (!currentModelIsCloud && currentLoadedModelName != null) {
+                        llama.unload()
+                    }
+                    currentLoadedModelName = model.name
+                    currentModelIsCloud = true
+                    currentCloudModelTag = model.cloudModelTag
+                    _uiState.update {
+                        it.copy(
+                            isModelLoaded = true,
+                            isModelLoading = false,
+                            loadedModelName = model.name
+                        )
+                    }
+                } else {
+                    // Unload cloud state
+                    currentModelIsCloud = false
+                    currentCloudModelTag = null
+                    llama.loadModel(model.filePath, nGpuLayers = 0)
+                    llama.createContext(nCtx = contextSize, nThreads = 4)
+                    currentLoadedModelName = model.name
+                    _uiState.update {
+                        it.copy(
+                            isModelLoaded = true,
+                            isModelLoading = false,
+                            loadedModelName = model.name
+                        )
+                    }
+                    updateMemoryUsage()
                 }
-                updateMemoryUsage()
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -137,8 +164,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun unloadModel() {
         viewModelScope.launch {
             stopGeneration()
-            llama.unload()
+            if (!currentModelIsCloud) {
+                llama.unload()
+            }
             currentLoadedModelName = null
+            currentModelIsCloud = false
+            currentCloudModelTag = null
             _uiState.update {
                 it.copy(isModelLoaded = false, loadedModelName = null)
             }
@@ -283,59 +314,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             try {
-                val prompt = buildPrompt()
-                val startTime = System.currentTimeMillis()
-                var tokenCount = 0
-                val responseBuilder = StringBuilder()
-
-                llama.complete(prompt, nPredict = 1024).collect { token ->
-                    responseBuilder.append(token)
-                    tokenCount++
-
-                    val elapsed = (System.currentTimeMillis() - startTime) / 1000f
-                    val tps = if (elapsed > 0) tokenCount / elapsed else 0f
-
-                    _uiState.update { state ->
-                        val messages = state.messages.toMutableList()
-                        messages[messages.lastIndex] = assistantMsg.copy(
-                            content = responseBuilder.toString(),
-                            isStreaming = true
-                        )
-                        state.copy(messages = messages, tokensPerSecond = tps)
-                    }
-
-                    if (tokenCount % 50 == 0) updateMemoryUsage()
+                if (currentModelIsCloud) {
+                    generateCloudResponse(assistantMsg)
+                } else {
+                    generateLocalResponse(assistantMsg)
                 }
-
-                // Mark as complete and save to DB
-                val finalContent = responseBuilder.toString()
-                val finalMsg = assistantMsg.copy(content = finalContent, isStreaming = false)
-
-                _uiState.update { state ->
-                    val messages = state.messages.toMutableList()
-                    messages[messages.lastIndex] = finalMsg
-                    state.copy(messages = messages, isGenerating = false)
-                }
-
-                // Persist assistant message
-                val sessionId = _uiState.value.currentSessionId
-                if (sessionId != null) {
-                    viewModelScope.launch(Dispatchers.IO) {
-                        chatDao.insertMessage(
-                            ChatMessageEntity(
-                                id = finalMsg.id,
-                                sessionId = sessionId,
-                                role = finalMsg.role.name,
-                                content = finalContent,
-                                timestamp = finalMsg.timestamp
-                            )
-                        )
-                        chatDao.updateSessionTimestamp(sessionId, System.currentTimeMillis())
-                        loadSessions()
-                    }
-                }
-
-                updateMemoryUsage()
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -343,6 +326,103 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         error = "Generation error: ${e.message}"
                     )
                 }
+            }
+        }
+    }
+
+    private suspend fun generateLocalResponse(assistantMsg: ChatMessage) {
+        val prompt = buildPrompt()
+        val startTime = System.currentTimeMillis()
+        var tokenCount = 0
+        val responseBuilder = StringBuilder()
+
+        llama.complete(prompt, nPredict = 1024).collect { token ->
+            responseBuilder.append(token)
+            tokenCount++
+
+            val elapsed = (System.currentTimeMillis() - startTime) / 1000f
+            val tps = if (elapsed > 0) tokenCount / elapsed else 0f
+
+            _uiState.update { state ->
+                val messages = state.messages.toMutableList()
+                messages[messages.lastIndex] = assistantMsg.copy(
+                    content = responseBuilder.toString(),
+                    isStreaming = true
+                )
+                state.copy(messages = messages, tokensPerSecond = tps)
+            }
+
+            if (tokenCount % 50 == 0) updateMemoryUsage()
+        }
+
+        finalizeResponse(assistantMsg, responseBuilder.toString())
+        updateMemoryUsage()
+    }
+
+    private suspend fun generateCloudResponse(assistantMsg: ChatMessage) {
+        val apiKey = modelRepo.getApiKey()
+        val modelTag = currentCloudModelTag ?: return
+
+        val cloudMessages = _uiState.value.messages
+            .filter { !it.isStreaming && it.content.isNotEmpty() }
+            .map { msg ->
+                OllamaCloudClient.ChatMessage(
+                    role = when (msg.role) {
+                        ChatMessage.Role.USER -> "user"
+                        ChatMessage.Role.ASSISTANT -> "assistant"
+                        ChatMessage.Role.SYSTEM -> "system"
+                    },
+                    content = msg.content
+                )
+            }
+
+        val startTime = System.currentTimeMillis()
+        var tokenCount = 0
+        val responseBuilder = StringBuilder()
+
+        cloudClient.chatStream(apiKey, modelTag, cloudMessages).collect { token ->
+            responseBuilder.append(token)
+            tokenCount++
+
+            val elapsed = (System.currentTimeMillis() - startTime) / 1000f
+            val tps = if (elapsed > 0) tokenCount / elapsed else 0f
+
+            _uiState.update { state ->
+                val messages = state.messages.toMutableList()
+                messages[messages.lastIndex] = assistantMsg.copy(
+                    content = responseBuilder.toString(),
+                    isStreaming = true
+                )
+                state.copy(messages = messages, tokensPerSecond = tps)
+            }
+        }
+
+        finalizeResponse(assistantMsg, responseBuilder.toString())
+    }
+
+    private suspend fun finalizeResponse(assistantMsg: ChatMessage, finalContent: String) {
+        val finalMsg = assistantMsg.copy(content = finalContent, isStreaming = false)
+
+        _uiState.update { state ->
+            val messages = state.messages.toMutableList()
+            messages[messages.lastIndex] = finalMsg
+            state.copy(messages = messages, isGenerating = false)
+        }
+
+        val sessionId = _uiState.value.currentSessionId
+        if (sessionId != null) {
+            viewModelScope.launch(Dispatchers.IO) {
+                chatDao.insertMessage(
+                    ChatMessageEntity(
+                        id = finalMsg.id,
+                        sessionId = sessionId,
+                        role = finalMsg.role.name,
+                        content = finalContent,
+                        timestamp = finalMsg.timestamp
+                    )
+                )
+                chatDao.updateSessionTimestamp(sessionId, System.currentTimeMillis())
+                loadSessions()
             }
         }
     }
@@ -415,7 +495,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopGeneration() {
-        llama.abort()
+        if (!currentModelIsCloud) {
+            llama.abort()
+        }
         generationJob?.cancel()
         generationJob = null
         _uiState.update { state ->
@@ -455,6 +537,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
-        viewModelScope.launch { llama.unload() }
+        if (!currentModelIsCloud) {
+            viewModelScope.launch { llama.unload() }
+        }
     }
 }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -50,7 +51,6 @@ import java.util.Locale
 @Composable
 fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
-    var showModelSelector by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -143,9 +143,6 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                         IconButton(onClick = { viewModel.startNewChat() }) {
                             Icon(Icons.Default.Add, "New chat")
                         }
-                        IconButton(onClick = { showModelSelector = true }) {
-                            Icon(Icons.Default.Memory, "Select model")
-                        }
                         if (uiState.messages.isNotEmpty()) {
                             IconButton(onClick = { showClearConfirm = true }) {
                                 Icon(Icons.Default.DeleteSweep, "Clear chat")
@@ -206,14 +203,10 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                "Download a model in the Models tab,\nthen tap the chip icon to load it.",
+                                "Download a local model or set up a\ncloud API key in Settings, then load it.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Button(onClick = { showModelSelector = true }) {
-                                Text("Load a Model")
-                            }
                         }
                     }
                 } else {
@@ -317,22 +310,6 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
         )
     }
 
-    // Model selector dialog
-    if (showModelSelector) {
-        ModelSelectorDialog(
-            models = uiState.availableModels,
-            currentModel = uiState.loadedModelName,
-            onSelect = { model ->
-                viewModel.loadModel(model)
-                showModelSelector = false
-            },
-            onUnload = {
-                viewModel.unloadModel()
-                showModelSelector = false
-            },
-            onDismiss = { showModelSelector = false }
-        )
-    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -841,50 +818,43 @@ fun ModelSelectorDialog(
     onUnload: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val localModels = models.filter { !it.isCloud }
+    val cloudModels = models.filter { it.isCloud }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Select Model") },
         text = {
             if (models.isEmpty()) {
-                Text("No models downloaded yet.\nGo to the Models tab to download one.")
+                Text("No models available.\nDownload a local model or add an Ollama API key in Settings for cloud models.")
             } else {
-                Column {
-                    models.forEach { model ->
-                        val isCurrent = model.name == currentModel
-                        Surface(
-                            onClick = { onSelect(model) },
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isCurrent)
-                                MaterialTheme.colorScheme.primaryContainer
-                            else
-                                MaterialTheme.colorScheme.surface,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        model.name,
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                    Text(
-                                        "${model.quantization} - ${formatSize(model.sizeBytes)}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                if (isCurrent) {
-                                    Icon(
-                                        Icons.Default.Check,
-                                        "Current",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
+                    if (localModels.isNotEmpty()) {
+                        Text(
+                            "Local Models",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                        localModels.forEach { model ->
+                            ModelSelectorItem(model, currentModel, onSelect)
+                        }
+                    }
+
+                    if (cloudModels.isNotEmpty()) {
+                        if (localModels.isNotEmpty()) {
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        }
+                        Text(
+                            "Cloud Models",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                        cloudModels.forEach { model ->
+                            ModelSelectorItem(model, currentModel, onSelect)
                         }
                     }
                 }
@@ -903,6 +873,57 @@ fun ModelSelectorDialog(
             }
         }
     )
+}
+
+@Composable
+private fun ModelSelectorItem(
+    model: com.ollama.android.data.LocalModel,
+    currentModel: String?,
+    onSelect: (com.ollama.android.data.LocalModel) -> Unit
+) {
+    val isCurrent = model.name == currentModel
+    Surface(
+        onClick = { onSelect(model) },
+        shape = RoundedCornerShape(12.dp),
+        color = if (isCurrent)
+            MaterialTheme.colorScheme.primaryContainer
+        else
+            MaterialTheme.colorScheme.surface,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                if (model.isCloud) Icons.Default.Cloud else Icons.Default.Memory,
+                null,
+                modifier = Modifier.size(20.dp).padding(end = 8.dp),
+                tint = if (model.isCloud) MaterialTheme.colorScheme.tertiary
+                       else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    model.name,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Text(
+                    if (model.isCloud) "Cloud" else "${model.quantization} - ${formatSize(model.sizeBytes)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (isCurrent) {
+                Icon(
+                    Icons.Default.Check,
+                    "Current",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
 }
 
 private fun formatSize(bytes: Long): String {

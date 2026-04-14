@@ -1,6 +1,6 @@
 # Ollama 4 Android
 
-Run large language models (Gemma 3, Qwen, SmolLM) locally on your Android device — completely offline, private, and fast. Powered by [llama.cpp](https://github.com/ggerganov/llama.cpp).
+Run large language models locally on your Android device or connect to **Ollama Cloud** for powerful cloud models (DeepSeek V3.1 671B, Qwen 3 Coder 480B, and more). Powered by [llama.cpp](https://github.com/ggerganov/llama.cpp) for local inference and the [Ollama Cloud API](https://ollama.com/search?c=cloud) for cloud models.
 
 > **Version:** 1.0.3  
 > **Package:** `io.github.kevinkicho.ollama4android`  
@@ -14,12 +14,15 @@ This project was built entirely by **Claude** (Anthropic's AI assistant), specif
 ## Features
 
 - **Local LLM inference** — Run GGUF models natively on Android using llama.cpp
+- **Ollama Cloud models** — Use DeepSeek V3.1 671B, Qwen 3 Coder 480B, GPT-OSS 120B/20B with your Ollama API key
 - **KleidiAI acceleration** — ARM64 dotprod + fp16 NEON kernels for quantized inference
 - **OpenMP multi-threading** — Parallel CPU inference across all performance cores
-- **Ollama-compatible API server** — Local HTTP API (`/api/chat`, `/api/generate`, `/api/tags`, `/api/version`) so other apps on the device can use your loaded model
+- **Ollama-compatible API server** — Local HTTP API (`/api/chat`, `/api/generate`, `/api/tags`) that works with both local and cloud models
+- **OpenAI-compatible API** — `/v1/chat/completions` endpoint for apps that use the OpenAI format (e.g., DeepSeek clients)
+- **Smart model routing** — API server respects the `model` field in requests, routing to the correct cloud model automatically
 - **Streaming chat UI** — Real-time token generation with tokens/second display
 - **Chat history** — Persistent chat sessions with SQLite, create/load/delete conversations
-- **Model management** — Download, delete, and switch models directly from Hugging Face
+- **Model management** — Download local models from Hugging Face, or select cloud models instantly
 - **Persistent background services** — Inference and API server survive app swipe-away (Termux-style) with wake locks
 - **Configurable API port** — Set a fixed port or use `0` for OS auto-assignment
 - **Model loading overlay** — Blocks interaction during model load to prevent crashes
@@ -28,7 +31,7 @@ This project was built entirely by **Claude** (Anthropic's AI assistant), specif
 - **Guided setup wizard** — Samsung-specific deep-links, battery optimization, notification permissions
 - **Material 3 (Material You)** — Adaptive theming with dynamic colors
 - **Shutdown controls** — Stop all background services from Settings or notification actions
-- **No telemetry** — No internet required after model download, no cloud dependency
+- **Privacy-first** — Local models run entirely offline; cloud models use Ollama's privacy-respecting API (no data retained)
 
 ## Tested Devices
 
@@ -39,6 +42,8 @@ This project was built entirely by **Claude** (Anthropic's AI assistant), specif
 
 ## Supported Models
 
+### Local Models (on-device, offline)
+
 | Model | File Size | RAM Needed | Best For |
 |-------|-----------|------------|----------|
 | Gemma 3 1B (Q4_K_M) | ~700 MB | ~1.5 GB | All devices, fast responses |
@@ -46,6 +51,17 @@ This project was built entirely by **Claude** (Anthropic's AI assistant), specif
 | Gemma 3 4B (Q4_K_M) | ~2.7 GB | ~4 GB | 8GB+ RAM devices, smarter |
 | SmolLM2 135M (Q8_0) | ~150 MB | ~0.5 GB | Testing, ultra-fast |
 | Qwen 2.5 0.5B (Q4_K_M) | ~400 MB | ~1 GB | Multilingual support |
+
+### Cloud Models (via Ollama API, requires API key)
+
+| Model | Parameters | Best For |
+|-------|-----------|----------|
+| DeepSeek V3.1 | 671B | Reasoning, coding, complex tasks |
+| Qwen 3 Coder | 480B | Code generation, top-tier coding |
+| GPT-OSS 120B | 120B | Strong general-purpose |
+| GPT-OSS 20B | 20B | Fast cloud inference |
+
+Cloud models require an [Ollama API key](https://ollama.com/settings/keys) and an Ollama subscription (Free, Pro, or Max). Enter your key in **Settings > Ollama Cloud**.
 
 ## Local API Server
 
@@ -57,17 +73,22 @@ Ollama 4 Android includes a built-in Ollama-compatible HTTP API server. When ena
 |----------|--------|-------------|
 | `/` | GET | Server status check |
 | `/api/version` | GET | Returns server version |
-| `/api/tags` | GET | Lists locally downloaded models |
+| `/api/tags` | GET | Lists all available models (local + cloud) |
 | `/api/generate` | POST | Text completion (streaming/non-streaming) |
 | `/api/chat` | POST | Chat completion with message history (streaming/non-streaming) |
+| `/v1/chat/completions` | POST | OpenAI-compatible chat endpoint (for DeepSeek, etc.) |
+| `/v1/models` | GET | OpenAI-compatible model list |
+
+The API server automatically routes requests to local llama.cpp or the Ollama Cloud API based on the `model` field in the request. If a cloud model tag is specified (e.g., `deepseek-v3.1:671b-cloud`), the request is proxied to Ollama's cloud servers.
 
 ### Setup
 
-1. Go to **Settings** → **API Server** card
-2. Select a model from the dropdown (or load one in Chat first)
+1. Go to **Settings** → **Active Model** card and select a model (local or cloud)
+2. Go to **Settings** → **API Server** card
 3. Set a port (or leave as `0` for auto-assignment)
 4. Toggle the server **ON**
 5. The server runs as a foreground service with a notification — tap **Stop Server** in the notification to stop it
+6. Other apps can now request any cloud model by name — the server routes automatically
 
 ### Usage from PC
 
@@ -131,10 +152,11 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ## Usage
 
 1. **Setup:** On first launch, the guided wizard helps configure battery optimization and notification permissions
-2. **Download a model:** Go to the Models tab, tap Download on Gemma 3 1B (recommended starter)
-3. **Load the model:** Go to Chat tab, tap the chip icon, select your downloaded model
-4. **Chat:** Type a message and tap send — tokens stream in real-time
-5. **API Server (optional):** Go to Settings, select a model in the API Server card, set a port, and toggle it on
+2. **Choose your mode:**
+   - **Local:** Go to Models tab, download Gemma 3 1B (recommended), then load it in Settings > Active Model
+   - **Cloud:** Go to Settings > Ollama Cloud, enter your API key, then select a cloud model in Settings > Active Model
+3. **Chat:** Type a message and tap send — tokens stream in real-time
+4. **API Server (optional):** Go to Settings > API Server, set a port, and toggle it on
 
 ## Project Structure
 
@@ -153,7 +175,8 @@ ollama4android/
 │       │   ├── MainActivity.kt                    # Single-activity entry point hosting Compose UI
 │       │   ├── OllamaApp.kt                       # Application class: backend init, notification channels
 │       │   ├── api/
-│       │   │   └── OllamaApiServer.kt             # Ollama-compatible HTTP API (NanoHTTPD)
+│       │   │   ├── OllamaApiServer.kt             # Ollama + OpenAI-compatible HTTP API (NanoHTTPD)
+│       │   │   └── OllamaCloudClient.kt           # Cloud API client: streaming chat via ollama.com
 │       │   ├── data/
 │       │   │   ├── ChatMessage.kt                 # Chat message data class with role, content, streaming state
 │       │   │   ├── Model.kt                       # Model catalog: predefined GGUF models from Hugging Face
@@ -205,8 +228,9 @@ ollama4android/
 2. **JNI bridge** (`ollama_jni.cpp`) exposes model loading, context creation, and streaming token generation to Kotlin via native method calls
 3. **LlamaAndroid.kt** wraps JNI calls with Kotlin `callbackFlow` for non-blocking streaming — tokens flow from C++ through JNI callbacks into Compose UI
 4. **ModelRepository** downloads GGUF model files from Hugging Face using OkHttp with real-time progress tracking
-5. **ChatViewModel** builds model-aware chat prompts (Gemma format or ChatML) and manages generation lifecycle with persistent session history
-6. **OllamaApiServer** exposes an Ollama-compatible HTTP API via NanoHTTPD, auto-detecting the loaded model to choose the correct prompt format
+5. **ChatViewModel** builds model-aware chat prompts (Gemma format or ChatML) for local models, or delegates to the cloud client for cloud models, with persistent session history
+6. **OllamaCloudClient** streams chat completions from `ollama.com/api/chat` with Bearer token auth, returning tokens as a Kotlin `Flow<String>` — same interface as local inference
+7. **OllamaApiServer** exposes Ollama-compatible (`/api/chat`) and OpenAI-compatible (`/v1/chat/completions`) HTTP APIs via NanoHTTPD, routing requests to local llama.cpp or Ollama Cloud based on the requested model
 7. **Foreground services** with partial wake locks keep inference and the API server running even when the app is swiped away or the screen is off
 8. **Jetpack Compose** renders the Material 3 chat interface with streaming message updates, responsive layout, and model loading overlay
 
@@ -241,7 +265,7 @@ Combined, these deliver **~15x speedup** over a naive build (0.7 t/s → 11.1 t/
 
 ## Privacy
 
-All inference runs entirely on-device. No data is collected, transmitted, or stored externally. The only network access is for downloading model files from Hugging Face. See the full [Privacy Policy](https://kevinkicho.github.io/Ollama4Android/privacy-policy.html).
+Local models run entirely on-device with no network access required after download. Cloud models send prompts to Ollama's servers (`ollama.com/api/chat`) using your API key — Ollama states they do not retain your data. No telemetry, analytics, or third-party tracking is included. See the full [Privacy Policy](https://kevinkicho.github.io/Ollama4Android/privacy-policy.html).
 
 ## Versioning
 
@@ -253,6 +277,7 @@ This project follows [Semantic Versioning](https://semver.org/):
 | **1.0.1** | 2 | Package ID change to `io.github.kevinkicho.ollama4android`, targetSdk 35 |
 | **1.0.2** | 3 | Ollama-compatible API server, chat history, persistent services, tablet UI, loading overlay |
 | **1.0.3** | 3 | Configurable port, model selector in API settings, shutdown controls, notification stop button |
+| **1.1.0** | 4 | Ollama Cloud models, OpenAI-compatible API (`/v1/chat/completions`), smart model routing, model selector in Settings |
 
 ## License
 

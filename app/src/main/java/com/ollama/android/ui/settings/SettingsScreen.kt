@@ -17,6 +17,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import com.ollama.android.api.OllamaApiServer
 import com.ollama.android.data.LocalModel
 import com.ollama.android.data.ModelRepository
@@ -90,6 +92,272 @@ fun SettingsScreen(onOpenSetup: () -> Unit = {}) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+            }
+
+            // Ollama Cloud
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "Ollama Cloud",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Enter your Ollama API key to use cloud models. Get one at ollama.com/settings/keys",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    val cloudModelRepo = remember { ModelRepository.getInstance(context) }
+                    var apiKey by remember { mutableStateOf(cloudModelRepo.getApiKey()) }
+                    var showKey by remember { mutableStateOf(false) }
+
+                    OutlinedTextField(
+                        value = apiKey,
+                        onValueChange = { newKey ->
+                            apiKey = newKey
+                            cloudModelRepo.setApiKey(newKey)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("API Key") },
+                        placeholder = { Text("ol-...") },
+                        singleLine = true,
+                        visualTransformation = if (showKey) VisualTransformation.None
+                            else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showKey = !showKey }) {
+                                Icon(
+                                    if (showKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    if (showKey) "Hide key" else "Show key"
+                                )
+                            }
+                        }
+                    )
+
+                    if (apiKey.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Cloud models available in model selector",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Model Selector
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "Active Model",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Select a local or cloud model to use for chat and the API server.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    val modelSelectorRepo = remember { ModelRepository.getInstance(context) }
+                    val modelScope = rememberCoroutineScope()
+                    val llama = LlamaAndroid.instance
+                    var allModels by remember { mutableStateOf<List<LocalModel>>(emptyList()) }
+                    var modelSelectorLoading by remember { mutableStateOf(false) }
+                    var activeModelName by remember { mutableStateOf(ChatViewModel.currentLoadedModelName) }
+                    var modelSelectorExpanded by remember { mutableStateOf(false) }
+
+                    LaunchedEffect(Unit) {
+                        allModels = withContext(Dispatchers.IO) { modelSelectorRepo.getAllAvailableModels() }
+                        activeModelName = ChatViewModel.currentLoadedModelName
+                    }
+
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { if (!modelSelectorLoading) modelSelectorExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !modelSelectorLoading
+                        ) {
+                            if (modelSelectorLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Loading model...")
+                            } else if (activeModelName != null) {
+                                Icon(
+                                    if (ChatViewModel.currentModelIsCloud) Icons.Default.Cloud else Icons.Default.CheckCircle,
+                                    null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(activeModelName!!)
+                            } else if (allModels.isEmpty()) {
+                                Icon(Icons.Default.Warning, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("No models available")
+                            } else {
+                                Icon(Icons.Default.Memory, null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Select a model to load")
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = modelSelectorExpanded,
+                            onDismissRequest = { modelSelectorExpanded = false }
+                        ) {
+                            val localModels = allModels.filter { !it.isCloud }
+                            val cloudModels = allModels.filter { it.isCloud }
+
+                            if (localModels.isNotEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("Local Models", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary) },
+                                    onClick = {},
+                                    enabled = false
+                                )
+                                localModels.forEach { model ->
+                                    val isLoaded = model.name == activeModelName
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(model.name)
+                                                if (isLoaded) {
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text("(loaded)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            modelSelectorExpanded = false
+                                            if (!isLoaded) {
+                                                modelSelectorLoading = true
+                                                modelScope.launch {
+                                                    try {
+                                                        if (ChatViewModel.currentModelIsCloud) {
+                                                            // switching from cloud to local
+                                                        } else if (ChatViewModel.currentLoadedModelName != null) {
+                                                            llama.unload()
+                                                        }
+                                                        ChatViewModel.currentModelIsCloud = false
+                                                        ChatViewModel.currentCloudModelTag = null
+                                                        llama.loadModel(model.filePath, nGpuLayers = 0)
+                                                        llama.createContext(nCtx = 4096, nThreads = 4)
+                                                        ChatViewModel.currentLoadedModelName = model.name
+                                                        activeModelName = model.name
+                                                    } catch (e: Exception) {
+                                                        activeModelName = null
+                                                    } finally {
+                                                        modelSelectorLoading = false
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                if (isLoaded) Icons.Default.CheckCircle else Icons.Default.Memory,
+                                                null,
+                                                modifier = Modifier.size(20.dp),
+                                                tint = if (isLoaded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+
+                            if (cloudModels.isNotEmpty()) {
+                                if (localModels.isNotEmpty()) {
+                                    HorizontalDivider()
+                                }
+                                DropdownMenuItem(
+                                    text = { Text("Cloud Models", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary) },
+                                    onClick = {},
+                                    enabled = false
+                                )
+                                cloudModels.forEach { model ->
+                                    val isLoaded = model.name == activeModelName
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(model.name)
+                                                if (isLoaded) {
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text("(active)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            modelSelectorExpanded = false
+                                            if (!isLoaded) {
+                                                modelSelectorLoading = true
+                                                modelScope.launch {
+                                                    try {
+                                                        if (!ChatViewModel.currentModelIsCloud && ChatViewModel.currentLoadedModelName != null) {
+                                                            llama.unload()
+                                                        }
+                                                        ChatViewModel.currentLoadedModelName = model.name
+                                                        ChatViewModel.currentModelIsCloud = true
+                                                        ChatViewModel.currentCloudModelTag = model.cloudModelTag
+                                                        activeModelName = model.name
+                                                    } catch (e: Exception) {
+                                                        activeModelName = null
+                                                    } finally {
+                                                        modelSelectorLoading = false
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                if (isLoaded) Icons.Default.CheckCircle else Icons.Default.Cloud,
+                                                null,
+                                                modifier = Modifier.size(20.dp),
+                                                tint = if (isLoaded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (activeModelName != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                modelScope.launch {
+                                    if (!ChatViewModel.currentModelIsCloud) {
+                                        llama.unload()
+                                    }
+                                    ChatViewModel.currentLoadedModelName = null
+                                    ChatViewModel.currentModelIsCloud = false
+                                    ChatViewModel.currentCloudModelTag = null
+                                    activeModelName = null
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.PowerSettingsNew, null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Unload Model")
+                        }
                     }
                 }
             }

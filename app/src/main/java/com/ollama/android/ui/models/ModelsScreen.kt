@@ -11,10 +11,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ollama.android.data.DownloadState
+import com.ollama.android.data.ModelCatalog
+import com.ollama.android.data.ModelRepository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -23,6 +26,11 @@ fun ModelsScreen(viewModel: ModelsViewModel = viewModel()) {
 
     LaunchedEffect(Unit) {
         viewModel.refreshModels()
+    }
+
+    val context = LocalContext.current
+    val hasApiKey = remember {
+        ModelRepository.getInstance(context).getApiKey().isNotBlank()
     }
 
     Scaffold(
@@ -41,12 +49,39 @@ fun ModelsScreen(viewModel: ModelsViewModel = viewModel()) {
         ) {
             item {
                 Text(
-                    "Download models to run locally on your device. " +
-                            "Models are downloaded from Hugging Face.",
+                    "Download models to run locally on your device, " +
+                            "or use cloud models with an Ollama API key.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
+            }
+
+            // Cloud models section
+            if (hasApiKey) {
+                item {
+                    Text(
+                        "Cloud Models",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                }
+
+                items(ModelCatalog.cloudModels, key = { it.id }) { cloudModel ->
+                    CloudModelCard(model = cloudModel)
+                }
+
+                item {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Local Models",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
 
             items(uiState.models, key = { it.model.id }) { item ->
@@ -243,6 +278,52 @@ fun ModelCard(
                 }
             }
         )
+    }
+}
+
+@Composable
+fun CloudModelCard(model: com.ollama.android.data.AvailableModel) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Cloud,
+                    null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.tertiary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    model.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                model.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Ready — select in chat to use",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
     }
 }
 

@@ -12,18 +12,22 @@ data class AvailableModel(
     val quantization: String,
     val huggingFaceRepo: String,
     val fileName: String,
-    val recommended: Boolean = false
+    val recommended: Boolean = false,
+    val isCloud: Boolean = false,
+    val cloudModelTag: String? = null
 )
 
 /**
- * Represents a model that has been downloaded locally.
+ * Represents a model available for use (local or cloud).
  */
 data class LocalModel(
     val id: String,
     val name: String,
     val filePath: String,
     val sizeBytes: Long,
-    val quantization: String
+    val quantization: String,
+    val isCloud: Boolean = false,
+    val cloudModelTag: String? = null
 )
 
 /**
@@ -101,4 +105,59 @@ object ModelCatalog {
     )
 
     fun getById(id: String): AvailableModel? = models.find { it.id == id }
+
+    val cloudModels = listOf(
+        AvailableModel(
+            id = "cloud-deepseek-v3.1-671b",
+            name = "DeepSeek V3.1 671B",
+            description = "DeepSeek's largest model. Exceptional at reasoning and coding tasks.",
+            sizeBytes = 0L,
+            ramRequired = "Cloud",
+            quantization = "Cloud",
+            huggingFaceRepo = "",
+            fileName = "",
+            isCloud = true,
+            cloudModelTag = "deepseek-v3.1:671b-cloud"
+        ),
+        AvailableModel(
+            id = "cloud-qwen3-coder-480b",
+            name = "Qwen 3 Coder 480B",
+            description = "Alibaba's massive coding model. Top-tier code generation.",
+            sizeBytes = 0L,
+            ramRequired = "Cloud",
+            quantization = "Cloud",
+            huggingFaceRepo = "",
+            fileName = "",
+            isCloud = true,
+            cloudModelTag = "qwen3-coder:480b-cloud"
+        ),
+        AvailableModel(
+            id = "cloud-gpt-oss-120b",
+            name = "GPT-OSS 120B",
+            description = "Open-source GPT model. Strong general-purpose performance.",
+            sizeBytes = 0L,
+            ramRequired = "Cloud",
+            quantization = "Cloud",
+            huggingFaceRepo = "",
+            fileName = "",
+            isCloud = true,
+            cloudModelTag = "gpt-oss:120b-cloud"
+        ),
+        AvailableModel(
+            id = "cloud-gpt-oss-20b",
+            name = "GPT-OSS 20B",
+            description = "Smaller open-source GPT model. Fast cloud inference.",
+            sizeBytes = 0L,
+            ramRequired = "Cloud",
+            quantization = "Cloud",
+            huggingFaceRepo = "",
+            fileName = "",
+            isCloud = true,
+            cloudModelTag = "gpt-oss:20b-cloud"
+        )
+    )
+
+    val allModels = models + cloudModels
+
+    fun getCloudById(id: String): AvailableModel? = cloudModels.find { it.id == id }
 }
