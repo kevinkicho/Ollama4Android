@@ -18,10 +18,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ollama.android.api.OllamaApiServer
+import com.ollama.android.data.LocalModel
+import com.ollama.android.data.ModelRepository
 import com.ollama.android.llama.LlamaAndroid
 import com.ollama.android.service.ApiServerService
 import com.ollama.android.service.InferenceService
+import com.ollama.android.ui.chat.ChatViewModel
 import com.ollama.android.util.DeviceOptimization
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -108,6 +114,102 @@ fun SettingsScreen(onOpenSetup: () -> Unit = {}) {
                     var apiPort by remember { mutableStateOf(prefs.getInt("port", OllamaApiServer.DEFAULT_PORT).let { if (it == 0) "0" else it.toString() }) }
                     var apiRunning by remember { mutableStateOf(ApiServerService.isRunning) }
                     val activePort = ApiServerService.activePort
+                    val scope = rememberCoroutineScope()
+                    val llama = LlamaAndroid.instance
+                    val modelRepo = remember { ModelRepository.getInstance(context) }
+                    var localModels by remember { mutableStateOf<List<LocalModel>>(emptyList()) }
+                    var modelLoading by remember { mutableStateOf(false) }
+                    var loadedModelName by remember { mutableStateOf(ChatViewModel.currentLoadedModelName) }
+                    var modelDropdownExpanded by remember { mutableStateOf(false) }
+
+                    LaunchedEffect(Unit) {
+                        localModels = withContext(Dispatchers.IO) { modelRepo.getLocalModels() }
+                        loadedModelName = ChatViewModel.currentLoadedModelName
+                    }
+
+                    // Model selector
+                    Text("Model", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { if (!modelLoading) modelDropdownExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !modelLoading
+                        ) {
+                            if (modelLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Loading model...")
+                            } else if (loadedModelName != null) {
+                                Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(loadedModelName!!)
+                            } else if (localModels.isEmpty()) {
+                                Icon(Icons.Default.Warning, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("No models downloaded — go to Models tab")
+                            } else {
+                                Icon(Icons.Default.Memory, null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Select a model to load")
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = modelDropdownExpanded,
+                            onDismissRequest = { modelDropdownExpanded = false }
+                        ) {
+                            localModels.forEach { model ->
+                                val isLoaded = model.name == loadedModelName
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(model.name)
+                                            if (isLoaded) {
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    "(loaded)",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        modelDropdownExpanded = false
+                                        if (!isLoaded) {
+                                            modelLoading = true
+                                            scope.launch {
+                                                try {
+                                                    llama.loadModel(model.filePath, nGpuLayers = 0)
+                                                    llama.createContext(nCtx = 4096, nThreads = 4)
+                                                    ChatViewModel.currentLoadedModelName = model.name
+                                                    loadedModelName = model.name
+                                                } catch (e: Exception) {
+                                                    loadedModelName = null
+                                                } finally {
+                                                    modelLoading = false
+                                                }
+                                            }
+                                        }
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            if (isLoaded) Icons.Default.CheckCircle else Icons.Default.Memory,
+                                            null,
+                                            modifier = Modifier.size(20.dp),
+                                            tint = if (isLoaded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     // Port configuration
                     Row(

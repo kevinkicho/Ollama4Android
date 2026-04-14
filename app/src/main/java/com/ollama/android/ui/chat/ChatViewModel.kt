@@ -58,7 +58,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         @Volatile
         var currentLoadedModelName: String? = null
-            private set
     }
 
     private var generationJob: Job? = null
