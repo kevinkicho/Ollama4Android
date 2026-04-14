@@ -55,6 +55,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
+    companion object {
+        @Volatile
+        var currentLoadedModelName: String? = null
+            private set
+    }
+
     private var generationJob: Job? = null
     private val contextSize = 4096
 
@@ -107,6 +113,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update { it.copy(error = null, isModelLoading = true) }
                 llama.loadModel(model.filePath, nGpuLayers = 0)
                 llama.createContext(nCtx = contextSize, nThreads = 4)
+                currentLoadedModelName = model.name
                 _uiState.update {
                     it.copy(
                         isModelLoaded = true,
@@ -132,6 +139,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             stopGeneration()
             llama.unload()
+            currentLoadedModelName = null
             _uiState.update {
                 it.copy(isModelLoaded = false, loadedModelName = null)
             }

@@ -4,6 +4,7 @@ import android.util.Log
 import com.ollama.android.data.ModelCatalog
 import com.ollama.android.data.ModelRepository
 import com.ollama.android.llama.LlamaAndroid
+import com.ollama.android.ui.chat.ChatViewModel
 import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
@@ -253,14 +254,30 @@ class OllamaApiServer(
     }
 
     private fun buildChatPrompt(messages: JSONArray): String {
+        val modelName = ChatViewModel.currentLoadedModelName?.lowercase() ?: ""
+        val useGemma = modelName.contains("gemma")
+
         val sb = StringBuilder()
         for (i in 0 until messages.length()) {
             val msg = messages.getJSONObject(i)
             val role = msg.optString("role", "user")
             val content = msg.optString("content", "")
-            sb.append("<|im_start|>$role\n$content<|im_end|>\n")
+
+            if (useGemma) {
+                val gemmaRole = if (role == "assistant") "model" else "user"
+                if (content.isNotEmpty()) {
+                    sb.append("<start_of_turn>$gemmaRole\n$content<end_of_turn>\n")
+                }
+            } else {
+                sb.append("<|im_start|>$role\n$content<|im_end|>\n")
+            }
         }
-        sb.append("<|im_start|>assistant\n")
+
+        if (useGemma) {
+            sb.append("<start_of_turn>model\n")
+        } else {
+            sb.append("<|im_start|>assistant\n")
+        }
         return sb.toString()
     }
 
