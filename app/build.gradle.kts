@@ -119,6 +119,9 @@ dependencies {
     // DataStore for preferences
     implementation("androidx.datastore:datastore-preferences:1.0.0")
 
+    // NanoHTTPD embedded HTTP server for local Ollama-compatible API
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
+
     // Work Manager for background downloads
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 

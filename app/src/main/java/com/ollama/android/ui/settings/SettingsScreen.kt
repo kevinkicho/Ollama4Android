@@ -1,6 +1,7 @@
 package com.ollama.android.ui.settings
 
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -14,7 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ollama.android.api.OllamaApiServer
 import com.ollama.android.llama.LlamaAndroid
+import com.ollama.android.service.ApiServerService
 import com.ollama.android.util.DeviceOptimization
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,6 +81,91 @@ fun SettingsScreen(onOpenSetup: () -> Unit = {}) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+            }
+
+            // API Server
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "Local API Server",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Expose an Ollama-compatible API on localhost:${OllamaApiServer.DEFAULT_PORT} so other apps can use the loaded model.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    var apiRunning by remember { mutableStateOf(ApiServerService.isRunning) }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("API Server", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                if (apiRunning) "Running on localhost:${OllamaApiServer.DEFAULT_PORT}"
+                                else "Stopped",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (apiRunning)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = apiRunning,
+                            onCheckedChange = { enabled ->
+                                if (enabled) {
+                                    val intent = Intent(context, ApiServerService::class.java)
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        context.startForegroundService(intent)
+                                    } else {
+                                        context.startService(intent)
+                                    }
+                                    apiRunning = true
+                                } else {
+                                    context.stopService(Intent(context, ApiServerService::class.java))
+                                    apiRunning = false
+                                }
+                            }
+                        )
+                    }
+
+                    if (apiRunning) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    "Endpoints:",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    "POST /api/chat\nPOST /api/generate\nGET  /api/tags\nGET  /api/version",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    "Base URL: http://localhost:${OllamaApiServer.DEFAULT_PORT}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -207,7 +295,7 @@ fun SettingsScreen(onOpenSetup: () -> Unit = {}) {
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "Ollama Android v1.0.0",
+                        "Ollama 4 Android v1.0.0",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(

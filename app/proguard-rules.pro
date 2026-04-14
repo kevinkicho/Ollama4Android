@@ -23,3 +23,7 @@
 # Keep Compose runtime metadata
 -keep class androidx.compose.** { *; }
 -dontwarn androidx.compose.**
+
+# NanoHTTPD — embedded HTTP server for local API
+-keep class fi.iki.elonen.** { *; }
+-dontwarn fi.iki.elonen.**
