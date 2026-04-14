@@ -13,14 +13,14 @@ val keystoreProperties = Properties().apply {
 
 android {
     namespace = "com.ollama.android"
-    compileSdk = 34
+    compileSdk = 35
     ndkVersion = "27.2.12479018"
 
     defaultConfig {
         applicationId = "io.github.kevinkicho.ollama4android"
         minSdk = 28
-        targetSdk = 34
-        versionCode = 1
+        targetSdk = 35
+        versionCode = 2
         versionName = "1.0.0"
 
         ndk {

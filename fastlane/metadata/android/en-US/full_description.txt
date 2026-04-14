@@ -1,4 +1,4 @@
-Ollama Android runs large language models (LLMs) directly on your device — completely offline, no cloud, no data leaves your phone.
+Ollama 4 Android runs large language models (LLMs) directly on your device — completely offline, no cloud, no data leaves your phone.
 
 Powered by llama.cpp, the app delivers fast on-device AI inference optimized for ARM processors with KleidiAI acceleration, OpenMP multi-threading, and NEON SIMD instructions.
 
@@ -6,10 +6,11 @@ Features:
 - Run Gemma 3, Qwen 2.5, SmolLM2, and other GGUF models locally
 - Streaming chat interface with real-time token generation
 - Download and manage models directly from Hugging Face
+- Chat history with session management
+- Local Ollama-compatible API server so other apps can use your models
 - Optimized for Snapdragon and other ARM64 processors
 - KleidiAI-accelerated quantized matrix operations
 - Battery optimization setup wizard for reliable background inference
-- Foreground service keeps inference alive
 - No internet required after model download
 - No telemetry, no tracking, no cloud dependency
 
