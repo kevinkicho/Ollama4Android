@@ -31,6 +31,7 @@ data class ChatSession(
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val isGenerating: Boolean = false,
+    val isModelLoading: Boolean = false,
     val isModelLoaded: Boolean = false,
     val loadedModelName: String? = null,
     val availableModels: List<LocalModel> = emptyList(),
@@ -103,12 +104,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun loadModel(model: LocalModel) {
         viewModelScope.launch {
             try {
-                _uiState.update { it.copy(error = null) }
+                _uiState.update { it.copy(error = null, isModelLoading = true) }
                 llama.loadModel(model.filePath, nGpuLayers = 0)
                 llama.createContext(nCtx = contextSize, nThreads = 4)
                 _uiState.update {
                     it.copy(
                         isModelLoaded = true,
+                        isModelLoading = false,
                         loadedModelName = model.name
                     )
                 }
@@ -118,6 +120,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(
                         error = "Failed to load model: ${e.message}",
                         isModelLoaded = false,
+                        isModelLoading = false,
                         loadedModelName = null
                     )
                 }
