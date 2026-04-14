@@ -3,7 +3,11 @@ package com.ollama.android.service
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
@@ -24,9 +28,21 @@ class ApiServerService : Service() {
     private var server: OllamaApiServer? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
+    private val stopReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            stopSelf()
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Handle stop action from notification
+        if (intent?.action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         val requestedPort = intent?.getIntExtra(EXTRA_PORT, OllamaApiServer.DEFAULT_PORT)
             ?: OllamaApiServer.DEFAULT_PORT
 
@@ -38,6 +54,7 @@ class ApiServerService : Service() {
                 isRunning = true
                 acquireWakeLock()
                 startForeground(NOTIFICATION_ID, createNotification(assignedPort))
+                registerStopReceiver()
                 Log.i(TAG, "API server started on port $assignedPort (requested: $requestedPort)")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start API server", e)
@@ -52,11 +69,11 @@ class ApiServerService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // Service survives app swipe-away — do nothing, keep running
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
+        try { unregisterReceiver(stopReceiver) } catch (_: Exception) {}
         server?.shutdown()
         server = null
         releaseWakeLock()
@@ -64,6 +81,15 @@ class ApiServerService : Service() {
         activePort = 0
         Log.i(TAG, "API server stopped")
         super.onDestroy()
+    }
+
+    private fun registerStopReceiver() {
+        val filter = IntentFilter(ACTION_STOP_BROADCAST)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(stopReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(stopReceiver, filter)
+        }
     }
 
     private fun acquireWakeLock() {
@@ -86,24 +112,33 @@ class ApiServerService : Service() {
     }
 
     private fun createNotification(port: Int): Notification {
-        val pendingIntent = PendingIntent.getActivity(
+        val openIntent = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE
         )
 
+        val stopIntent = PendingIntent.getService(
+            this, 1,
+            Intent(this, ApiServerService::class.java).apply { action = ACTION_STOP },
+            PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, OllamaApp.CHANNEL_INFERENCE)
             .setContentTitle("Ollama API Server")
-            .setContentText("Running on localhost:$port")
+            .setContentText("Running on http://localhost:$port")
             .setSmallIcon(android.R.drawable.ic_menu_share)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(openIntent)
             .setOngoing(true)
+            .addAction(android.R.drawable.ic_media_pause, "Stop Server", stopIntent)
             .build()
     }
 
     companion object {
         const val NOTIFICATION_ID = 2
         const val EXTRA_PORT = "port"
+        const val ACTION_STOP = "com.ollama.android.STOP_API_SERVER"
+        const val ACTION_STOP_BROADCAST = "com.ollama.android.STOP_API_BROADCAST"
         private const val TAG = "ApiServerService"
 
         @Volatile

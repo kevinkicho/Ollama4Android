@@ -113,7 +113,16 @@ fun SettingsScreen(onOpenSetup: () -> Unit = {}) {
                     val prefs = remember { context.getSharedPreferences("api_server", Context.MODE_PRIVATE) }
                     var apiPort by remember { mutableStateOf(prefs.getInt("port", OllamaApiServer.DEFAULT_PORT).let { if (it == 0) "0" else it.toString() }) }
                     var apiRunning by remember { mutableStateOf(ApiServerService.isRunning) }
-                    val activePort = ApiServerService.activePort
+                    var activePort by remember { mutableIntStateOf(ApiServerService.activePort) }
+
+                    // Refresh active port when server state changes
+                    LaunchedEffect(apiRunning) {
+                        if (apiRunning) {
+                            // Brief delay to let the server bind and report its port
+                            kotlinx.coroutines.delay(500)
+                            activePort = ApiServerService.activePort
+                        }
+                    }
                     val scope = rememberCoroutineScope()
                     val llama = LlamaAndroid.instance
                     val modelRepo = remember { ModelRepository.getInstance(context) }
@@ -258,7 +267,8 @@ fun SettingsScreen(onOpenSetup: () -> Unit = {}) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("API Server", style = MaterialTheme.typography.bodyMedium)
                             Text(
-                                if (apiRunning) "Running on localhost:$activePort"
+                                if (apiRunning && activePort > 0) "Running on localhost:$activePort"
+                                else if (apiRunning) "Starting..."
                                 else "Stopped",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (apiRunning)
@@ -289,7 +299,7 @@ fun SettingsScreen(onOpenSetup: () -> Unit = {}) {
                         )
                     }
 
-                    if (apiRunning) {
+                    if (apiRunning && activePort > 0) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Card(
                             colors = CardDefaults.cardColors(
