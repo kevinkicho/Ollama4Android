@@ -17,7 +17,7 @@ android {
     ndkVersion = "27.2.12479018"
 
     defaultConfig {
-        applicationId = "com.ollama.android"
+        applicationId = "io.github.kevinkicho.ollama4android"
         minSdk = 28
         targetSdk = 34
         versionCode = 1
