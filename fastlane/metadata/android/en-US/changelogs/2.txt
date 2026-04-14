@@ -1,0 +1,4 @@
+Changes:
+- Package ID changed to io.github.kevinkicho.ollama4android
+- Target SDK updated to API 35 (Android 15)
+- Models must be re-downloaded after package name change

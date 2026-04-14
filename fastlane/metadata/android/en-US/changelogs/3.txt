@@ -1,0 +1,13 @@
+New features:
+- Ollama-compatible local API server (/api/chat, /api/generate, /api/tags)
+- Chat history with persistent sessions (create, load, delete)
+- Configurable API server port (fixed or OS auto-assign)
+- Model selector in API server settings
+- Persistent background services survive app swipe-away
+- Wake locks keep inference alive with screen off
+- Shutdown controls for all background services
+- Stop Server button in notification
+- Model loading overlay prevents interaction during load
+- Responsive chat bubbles for tablet screens
+- Long-press to copy messages
+- Context window increased to 4096 tokens
